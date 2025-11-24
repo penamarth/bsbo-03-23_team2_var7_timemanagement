@@ -1,0 +1,14 @@
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\bin\Debug\net8.0\TimeManagment_v7.exe
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\bin\Debug\net8.0\TimeManagment_v7.deps.json
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\bin\Debug\net8.0\TimeManagment_v7.runtimeconfig.json
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\bin\Debug\net8.0\TimeManagment_v7.dll
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\bin\Debug\net8.0\TimeManagment_v7.pdb
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.AssemblyInfoInputs.cache
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.AssemblyInfo.cs
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.csproj.CoreCompileInputs.cache
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.dll
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\refint\TimeManagment_v7.dll
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.pdb
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\TimeManagment_v7.genruntimeconfig.cache
+C:\Users\Lavre\Downloads\hui_konya3-dev\hui_konya3-dev\test\Code\TimeManagment_v7\TimeManagment_v7\obj\Debug\net8.0\ref\TimeManagment_v7.dll
