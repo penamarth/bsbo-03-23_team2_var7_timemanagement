@@ -1,4 +1,3 @@
-﻿// Program.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,11 +5,18 @@ using System.Text;
 using System.Text.Json;
 using System.IO;
 
+/// Статусы задачи в системе
+/// NotStarted - задача создана, но не начата
+/// InProgress - задача в работе
+/// Done - задача завершена
+/// Overdue - задача просрочена
 enum TaskStatus { NotStarted, InProgress, Done, Overdue }
 
-// ---------------------------
-// State pattern interfaces & states
-// ---------------------------
+// ===========================
+// STATE PATTERN - Управление состояниями задачи
+// ===========================
+// Для управления поведением задачи в зависимости от её состояния. 
+// Каждое состояние знает, какие переходы допустимы и как их обрабатывать.
 interface ITaskState
 {
     string Name { get; }
@@ -19,12 +25,15 @@ interface ITaskState
     void MarkOverdue(TaskEntity task, Guid changedBy);
 }
 
+/// Состояние "Не начата" - начальное состояние задачи
+/// Разрешенные переходы: InProgress, Overdue
 class NotStartedState : ITaskState
 {
     public string Name => "NotStarted";
 
     public void Start(TaskEntity task, Guid changedBy)
     {
+        // При старте задачи фиксируем время начала
         task.StartedAt = DateTime.UtcNow;
         task.SetState(new InProgressState(), changedBy);
     }
@@ -36,10 +45,13 @@ class NotStartedState : ITaskState
 
     public void MarkOverdue(TaskEntity task, Guid changedBy)
     {
+        // Задача может стать просроченной даже если не начата
         task.SetState(new OverdueState(), changedBy);
     }
 }
 
+/// Состояние "В работе" - задача выполняется
+/// Разрешенные переходы: Done, Overdue
 class InProgressState : ITaskState
 {
     public string Name => "InProgress";
@@ -51,24 +63,27 @@ class InProgressState : ITaskState
 
     public void Complete(TaskEntity task, Guid changedBy)
     {
+        // При завершении фиксируем время завершения
         task.CompletedAt = DateTime.UtcNow;
         task.SetState(new DoneState(), changedBy);
     }
 
     public void MarkOverdue(TaskEntity task, Guid changedBy)
     {
+        // Задача в работе может стать просроченной
         task.SetState(new OverdueState(), changedBy);
     }
 }
 
+/// Состояние "Завершена" - конечное состояние
+/// Большинство переходов запрещено
 class DoneState : ITaskState
 {
     public string Name => "Done";
 
     public void Start(TaskEntity task, Guid changedBy)
     {
-        // Можно разрешить переоткрытие — но через явное действие (в нашем UI мы переходим в InProgress после подтверждения)
-        // Для простоты — переводим в NotStarted при повторном старта не разрешаем
+        // Для переоткрытия задачи требуется специальная логика
         throw new InvalidOperationException("Нельзя начать завершённую задачу без переоткрытия.");
     }
 
@@ -83,35 +98,40 @@ class DoneState : ITaskState
     }
 }
 
+/// Состояние "Просрочена" - задача не выполнена в срок
+/// Разрешенные переходы: InProgress, Done
 class OverdueState : ITaskState
 {
     public string Name => "Overdue";
 
     public void Start(TaskEntity task, Guid changedBy)
     {
-        // Если просрочена, но начали работу — переводим в InProgress и ставим StartedAt, если не было
-        if (!task.StartedAt.HasValue) task.StartedAt = DateTime.UtcNow;
+        // Если просроченную задачу начали - переводим в работу
+        if (!task.StartedAt.HasValue) 
+            task.StartedAt = DateTime.UtcNow;
         task.SetState(new InProgressState(), changedBy);
     }
 
     public void Complete(TaskEntity task, Guid changedBy)
     {
+        // Просроченную задачу можно завершить
         task.CompletedAt = DateTime.UtcNow;
         task.SetState(new DoneState(), changedBy);
     }
 
     public void MarkOverdue(TaskEntity task, Guid changedBy)
     {
-        // уже просрочена — ничего не делаем, но можно добавить запись
+        // Уже просрочена - просто записываем в историю
         task.RecordHistory(GetTaskStatus(task), TaskStatus.Overdue, changedBy);
     }
 
     private TaskStatus GetTaskStatus(TaskEntity t) => t.GetStatus();
 }
 
-// ---------------------------
-// Domain models
-// ---------------------------
+// ===========================
+// DOMAIN MODELS - Бизнес-сущности
+// ===========================
+/// Пользователь системы - исполнитель задач
 class User
 {
     public Guid Id { get; } = Guid.NewGuid();
@@ -120,6 +140,7 @@ class User
     public override string ToString() => $"{Name} ({Id.ToString().Substring(0, 6)})";
 }
 
+/// Проект - контейнер для задач
 class Project
 {
     public Guid Id { get; } = Guid.NewGuid();
@@ -129,6 +150,7 @@ class Project
     public override string ToString() => $"{Name} ({Id.ToString().Substring(0, 6)})";
 }
 
+/// Запись в истории изменений статуса задачи
 class TaskStateHistory
 {
     public TaskStatus From { get; set; }
@@ -137,13 +159,16 @@ class TaskStateHistory
     public DateTime ChangedAt { get; set; }
 }
 
+/// Задача - основная бизнес-сущность
+/// Использует State Pattern для управления статусами
 class TaskEntity
 {
     public Guid Id { get; } = Guid.NewGuid();
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
     public Guid? AssigneeId { get; set; }
-    // internal state
+    
+    // Внутреннее состояние, управляемое шаблоном состояния
     public ITaskState State { get; private set; } = new NotStartedState();
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
@@ -151,7 +176,6 @@ class TaskEntity
     public DateTime? Deadline { get; set; }
     public List<TaskStateHistory> History { get; set; } = new();
 
-    // Конструктор по умолчанию оставляем
     public TaskEntity() { }
 
     public TaskEntity(string title)
@@ -160,17 +184,19 @@ class TaskEntity
         State = new NotStartedState();
     }
 
-    // Установить состояние (используется внутренне из состояний)
+    /// Установка нового состояния с записью в историю
+    /// Внутренний метод, вызывается из State-объектов
     public void SetState(ITaskState newState, Guid changedBy)
     {
         var oldStatus = GetStatus();
         var newStatus = ParseStatus(newState.Name);
-        // Записываем в историю переход
+        
+        // Записываем переход в историю перед изменением состояния
         RecordHistory(oldStatus, newStatus, changedBy);
         State = newState;
     }
 
-    // Метод для записи истории (если нужно, вызывается и извне)
+    /// Запись изменения статуса в историю
     public void RecordHistory(TaskStatus from, TaskStatus to, Guid changedBy)
     {
         History.Add(new TaskStateHistory
@@ -182,12 +208,14 @@ class TaskEntity
         });
     }
 
-    // Возвращает enum-статус для совместимости со старым кодом
+    /// Получение текущего статуса как enum для совместимости
     public TaskStatus GetStatus()
     {
         return ParseStatus(State.Name);
     }
 
+    /// Преобразование строкового имени состояния в enum
+    /// Используется для совместимости со старой системой
     static TaskStatus ParseStatus(string name)
     {
         return name switch
@@ -200,37 +228,38 @@ class TaskEntity
         };
     }
 
-    // Выполняет переход к целевому статусу, инкапсулируя логику переходов через State
-    // changedBy — Id пользователя (Guid.Empty, если system)
+    /// Основной метод для изменения статуса задачи
+    /// Инкапсулирует бизнес-логику переходов между статусами
+    /// changedBy - ID пользователя (Guid.Empty для системных изменений)
     public void TransitionTo(TaskStatus target, Guid changedBy)
     {
-        // Варианты переходов — вызываем нужный метод состояния
+        // Бизнес-логика переходов между статусами
         switch (target)
         {
             case TaskStatus.NotStarted:
-                // Для простоты: перевод в NotStarted допустим только вручную (в данном CLI — не используется)
-                // Можно реализовать переоткрытие: если было Done и хотят InProgress, в UI обеспечиваем подтверждение и затем Start.
-                // Здесь оставим перевод в NotStarted только если текущий — Done и мы хотим переоткрыть — реализуем как сброс.
+                // Перевод в NotStarted разрешен только для переоткрытия завершенных задач
                 if (GetStatus() == TaskStatus.Done)
                 {
-                    // переоткрыть — перевод в NotStarted и очистить CompletedAt
+                    // Переоткрытие задачи: сбрасываем дату завершения
                     CompletedAt = null;
                     SetState(new NotStartedState(), changedBy);
                 }
-                else
+                else if (GetStatus() != TaskStatus.NotStarted)
                 {
-                    // если уже NotStarted — ничего не делаем
-                    if (GetStatus() != TaskStatus.NotStarted)
-                        SetState(new NotStartedState(), changedBy);
+                    // Для других статусов - просто переводим в NotStarted
+                    SetState(new NotStartedState(), changedBy);
                 }
                 break;
             case TaskStatus.InProgress:
+                // Делегируем логику старта текущему состоянию
                 State.Start(this, changedBy);
                 break;
             case TaskStatus.Done:
+                // Делегируем логику завершения текущему состоянию
                 State.Complete(this, changedBy);
                 break;
             case TaskStatus.Overdue:
+                // Делегируем логику отметки просрочки текущему состоянию
                 State.MarkOverdue(this, changedBy);
                 break;
             default:
@@ -246,9 +275,10 @@ class TaskEntity
     }
 }
 
-// ---------------------------
-// Reports/Analysis (обновлено для использования GetStatus())
-// ---------------------------
+// ===========================
+// REPORTS & ANALYSIS - Модуль отчетности и аналитики
+// ===========================
+/// Параметры для формирования отчета
 class ReportParameters
 {
     public DateTime From;
@@ -259,6 +289,7 @@ class ReportParameters
     public string Format; // "json","csv","txt"
 }
 
+/// Отчет по задачам с аналитикой
 class Report
 {
     public Guid Id { get; } = Guid.NewGuid();
@@ -274,6 +305,7 @@ class Report
     public TimeSpan AvgTime { get; set; }
 }
 
+/// Глобальное хранилище данных приложения (упрощенный Singleton)
 static class Data
 {
     public static List<User> Users = new();
@@ -281,14 +313,18 @@ static class Data
     public static List<Report> Reports = new();
 }
 
-class AnalysisModule
+/// Модуль аналитики - расчет метрик по задачам
+static class AnalysisModule
 {
+    /// Анализ задач и формирование отчета
+    /// Рассчитывает метрики: время выполнения, статистику по статусам и т.д.
     public static Report Analyze(IEnumerable<TaskEntity> tasks, ReportParameters p)
     {
         var now = DateTime.UtcNow;
         var taskList = tasks.ToList();
         var r = new Report { Parameters = p, Tasks = taskList, Total = taskList.Count };
 
+        // Статистика по статусам
         var counts = new Dictionary<string, int> {
             { "NotStarted", taskList.Count(t => t.GetStatus() == TaskStatus.NotStarted) },
             { "InProgress", taskList.Count(t => t.GetStatus() == TaskStatus.InProgress) },
@@ -297,35 +333,51 @@ class AnalysisModule
         };
         r.CountsByStatus = counts;
 
+        // Расчет времени выполнения задач
         var times = new List<TimeSpan>();
         foreach (var t in taskList)
         {
             TimeSpan? dur = null;
             var status = t.GetStatus();
+            
             if (status == TaskStatus.InProgress || status == TaskStatus.Overdue)
             {
+                // Для активных задач - время от начала до текущего момента
                 if (t.StartedAt.HasValue) dur = now - t.StartedAt.Value;
             }
             else if (status == TaskStatus.Done)
             {
-                if (t.StartedAt.HasValue && t.CompletedAt.HasValue) dur = t.CompletedAt.Value - t.StartedAt.Value;
+                // Для завершенных - фактическое время выполнения
+                if (t.StartedAt.HasValue && t.CompletedAt.HasValue) 
+                    dur = t.CompletedAt.Value - t.StartedAt.Value;
             }
-            if (dur.HasValue && dur.Value.TotalSeconds > 0) times.Add(dur.Value);
+            
+            if (dur.HasValue && dur.Value.TotalSeconds > 0) 
+                times.Add(dur.Value);
         }
+        
         r.TotalTime = times.Aggregate(TimeSpan.Zero, (a, b) => a + b);
         r.AvgTime = times.Count > 0 ? TimeSpan.FromTicks((long)times.Average(ts => ts.Ticks)) : TimeSpan.Zero;
         r.PercentDone = r.Total > 0 ? 100.0 * r.CountsByStatus["Done"] / r.Total : 0.0;
 
+        // Анализ сроков выполнения
         int doneOnTime = 0, overdue = 0;
         foreach (var t in taskList)
         {
             var status = t.GetStatus();
             if (status == TaskStatus.Done && t.CompletedAt.HasValue && t.Deadline.HasValue)
             {
-                if (t.CompletedAt.Value <= t.Deadline.Value) doneOnTime++;
-                else overdue++;
+                // Проверяем выполнена ли задача в срок
+                if (t.CompletedAt.Value <= t.Deadline.Value) 
+                    doneOnTime++;
+                else 
+                    overdue++;
             }
-            else if (status == TaskStatus.Overdue) overdue++;
+            else if (status == TaskStatus.Overdue)
+            {
+                // Просроченные задачи
+                overdue++;
+            }
         }
         r.DoneOnTime = doneOnTime;
         r.Overdue = overdue;
@@ -334,8 +386,11 @@ class AnalysisModule
     }
 }
 
+/// Форматирование отчетов в различные форматы
 static class ReportFormatter
 {
+    /// Форматирование отчета в указанный формат
+    /// Поддерживаются: JSON, CSV, текстовый формат
     public static string Format(Report r, string format)
     {
         format = format.ToLowerInvariant();
@@ -361,6 +416,7 @@ static class ReportFormatter
         }
         else
         {
+            // Текстовый формат по умолчанию
             var sb = new StringBuilder();
             sb.AppendLine($"Отчёт {r.Id} создан {r.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC");
             sb.AppendLine($"Период: {r.Parameters.From:yyyy-MM-dd} — {r.Parameters.To:yyyy-MM-dd}");
@@ -383,28 +439,35 @@ static class ReportFormatter
     }
 
     static string EscapeCsv(string s) => $"\"{s?.Replace("\"", "\"\"")}\"";
+    
     static string GetProjectIdForTask(TaskEntity t)
     {
-        foreach (var p in Data.Projects) if (p.Tasks.Any(x => x.Id == t.Id)) return p.Id.ToString();
+        // Поиск проекта, к которому принадлежит задача
+        foreach (var p in Data.Projects) 
+            if (p.Tasks.Any(x => x.Id == t.Id)) 
+                return p.Id.ToString();
         return "";
     }
 }
 
-// ---------------------------
-// CLI application
-// ---------------------------
+// ===========================
+// CLI APPLICATION - Консольное приложение
+// ===========================
 class Program
 {
     static void Main()
     {
+        // Инициализация тестовыми данными
         Seed();
         Console.WriteLine("Простое CLI-приложение управления задачами (демо).");
+        
         while (true)
         {
             PrintMenu();
             var cmd = Console.ReadLine()?.Trim();
             if (string.IsNullOrEmpty(cmd)) continue;
             if (cmd == "exit") break;
+            
             try
             {
                 Handle(cmd);
@@ -450,30 +513,37 @@ class Program
         }
     }
 
+    /// Инициализация тестовыми данными для демонстрации
     static void Seed()
     {
         var u1 = new User("Алиса");
         var u2 = new User("Боб");
         Data.Users.AddRange(new[] { u1, u2 });
+        
         var p = new Project("Демонстрационный проект");
         var t1 = new TaskEntity { Title = "Задача 1", Description = "Первая", Deadline = DateTime.UtcNow.AddDays(2) };
-        // поместим t2 в состояние Overdue
+        
+        // Создаем просроченную задачу для демонстрации
         var t2 = new TaskEntity { Title = "Задача 2", Description = "Вторая", Deadline = DateTime.UtcNow.AddDays(-1) };
         t2.SetState(new OverdueState(), Guid.Empty);
-        p.Tasks.Add(t1); p.Tasks.Add(t2);
+        
+        p.Tasks.Add(t1); 
+        p.Tasks.Add(t2);
         Data.Projects.Add(p);
     }
 
     static void ListUsers()
     {
         Console.WriteLine("Пользователи:");
-        foreach (var u in Data.Users) Console.WriteLine($"  {u} ");
+        foreach (var u in Data.Users) 
+            Console.WriteLine($"  {u} ");
     }
 
     static void ListProjects()
     {
         Console.WriteLine("Проекты:");
-        foreach (var p in Data.Projects) Console.WriteLine($"  {p} Задач:{p.Tasks.Count}");
+        foreach (var p in Data.Projects) 
+            Console.WriteLine($"  {p} Задач:{p.Tasks.Count}");
     }
 
     static void CreateProject()
@@ -526,6 +596,7 @@ class Program
         }
     }
 
+    /// Назначение исполнителя на задачу с проверкой нагрузки
     static void Assign()
     {
         Console.Write("ID задачи (первые 6 символов): ");
@@ -543,6 +614,7 @@ class Program
         var user = Data.Users.FirstOrDefault(x => x.Id.ToString().StartsWith(uid));
         if (user == null) { Console.WriteLine("Пользователь не найден"); return; }
 
+        // Проверка нагрузки пользователя
         var userTasks = Data.Projects.SelectMany(p => p.Tasks)
             .Count(t => t.AssigneeId == user.Id && t.GetStatus() == TaskStatus.InProgress);
 
@@ -557,6 +629,7 @@ class Program
         Console.WriteLine("Исполнитель назначен.");
     }
 
+    /// Изменение статуса задачи с проверкой бизнес-правил
     static void ChangeStatus()
     {
         Console.Write("ID задачи (первые 6 символов): ");
@@ -574,6 +647,7 @@ class Program
         var newStatus = (TaskStatus)si;
         var old = task.GetStatus();
 
+        // Проверка специального случая - переоткрытие завершенной задачи
         if (old == TaskStatus.Done && newStatus == TaskStatus.InProgress)
         {
             Console.WriteLine("Переход из Done в InProgress невозможен без подтверждения. Подтвердить? (y/n)");
@@ -581,12 +655,13 @@ class Program
             if (c?.ToLower() != "y") return;
         }
 
-        // выполняем переход, метод сам записывает историю и выставляет даты
+        // Выполняем переход через State Pattern
         task.TransitionTo(newStatus, Guid.Empty);
 
         Console.WriteLine("Статус изменён.");
     }
 
+    /// Показать историю изменений статуса задачи
     static void ShowHistory()
     {
         Console.Write("ID задачи (первые 6 символов): ");
@@ -603,12 +678,14 @@ class Program
         }
     }
 
+    /// Поиск задачи по короткому ID (первые 6 символов)
     static TaskEntity FindTaskByShortId(string shortId)
     {
         return Data.Projects.SelectMany(p => p.Tasks)
             .FirstOrDefault(t => t.Id.ToString().StartsWith(shortId));
     }
 
+    /// Генерация отчета по задачам с фильтрацией
     static void GenerateReport()
     {
         Console.Write("С даты (yyyy-MM-dd): ");
@@ -656,13 +733,14 @@ class Program
         var pparams = new ReportParameters
         {
             From = from.Date,
-            To = to.Date.AddDays(1).AddSeconds(-1),
+            To = to.Date.AddDays(1).AddSeconds(-1), // Конец дня
             ProjectId = projectId,
             AssigneeId = assigneeId,
             Statuses = statuses,
             Format = fmt
         };
 
+        // Фильтрация задач по параметрам
         var allTasks = Data.Projects.SelectMany(p => p.Tasks);
 
         if (projectId.HasValue)
@@ -681,17 +759,27 @@ class Program
             allTasks = allTasks.Where(t => statuses.Contains(t.GetStatus()));
         }
 
+        // Дополнительная фильтрация по временному периоду
         var filtered = new List<TaskEntity>();
         foreach (var t in allTasks)
         {
             bool include = false;
-            if (t.CreatedAt >= pparams.From && t.CreatedAt <= pparams.To) include = true;
-            if (!include && t.History.Any(h => h.ChangedAt >= pparams.From && h.ChangedAt <= pparams.To)) include = true;
+            
+            // Задача включается в отчет если:
+            // 1. Создана в указанный период ИЛИ
+            // 2. Имела изменения статуса в период ИЛИ 
+            // 3. Была завершена в период
+            if (t.CreatedAt >= pparams.From && t.CreatedAt <= pparams.To) 
+                include = true;
+            if (!include && t.History.Any(h => h.ChangedAt >= pparams.From && h.ChangedAt <= pparams.To)) 
+                include = true;
             if (!include && t.GetStatus() == TaskStatus.Done &&
                 t.CompletedAt.HasValue &&
                 t.CompletedAt.Value >= pparams.From &&
-                t.CompletedAt.Value <= pparams.To) include = true;
+                t.CompletedAt.Value <= pparams.To) 
+                include = true;
 
+            // Исключаем задачи, завершенные до начала периода отчета
             if (t.GetStatus() == TaskStatus.Done &&
                 t.CompletedAt.HasValue &&
                 t.CompletedAt.Value < pparams.From)
@@ -706,6 +794,7 @@ class Program
             return;
         }
 
+        // Генерация и сохранение отчета
         var report = AnalysisModule.Analyze(filtered, pparams);
         Data.Reports.Add(report);
 
